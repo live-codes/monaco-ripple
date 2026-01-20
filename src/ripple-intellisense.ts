@@ -880,6 +880,5 @@ export class RippleIntelliSense {
 export function initializeRippleIntelliSense(
   monaco: typeof Monaco = (window as any).monaco,
 ): RippleIntelliSense {
-  console.log(monaco);
   return new RippleIntelliSense(monaco);
 }

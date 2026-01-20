@@ -1,6 +1,6 @@
 {
   "name": "@live-codes/monaco-ripple",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Monaco Editor support for Ripple",
   "repository": {
     "url": "https://github.com/live-codes/monaco-ripple"
