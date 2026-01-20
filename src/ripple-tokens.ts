@@ -231,52 +231,89 @@ export const tokens: languages.IMonarchLanguage = {
       [/<tsx:react>/, "tag"],
       [/<\/tsx:react>/, "tag"],
 
-      // Children component
+      // Children component self-closing
       [/<children\s*\/>/, "tag"],
 
-      // Dynamic component tags <@Component />
-      [/<\/@[a-zA-Z_$][\w$]*>/, "tag"],
-      [/<@[a-zA-Z_$][\w$]*/, { token: "tag", next: "@jsxStartTag" }],
+      // Dynamic component closing tags </@Component>
+      [/(<\/)(@[a-zA-Z_$][\w$]*)(>)/, ["delimiter", "variable", "delimiter"]],
 
-      // Closing tags
-      [/<\/[a-zA-Z_$][\w$.-]*\s*>/, "tag"],
+      // Dynamic component opening tags <@Component
+      [/(<)(@[a-zA-Z_$][\w$]*)/, ["delimiter", "variable"], "@jsxStartTag"],
 
-      // Opening tags - be careful not to match comparison operators
-      [/<[a-zA-Z_$][\w$.-]*/, { token: "tag", next: "@jsxStartTag" }],
+      // Closing tags </div>
+      [/(<\/)([a-zA-Z_$][\w$.-]*)(>)/, ["delimiter", "tag", "delimiter"]],
+
+      // Self-closing tags without attributes <br/>
+      [/(<)([a-zA-Z_$][\w$.-]*)(\s*\/>)/, ["delimiter", "tag", "delimiter"]],
+
+      // Opening tags <div
+      [/(<)([a-zA-Z_$][\w$.-]*)/, ["delimiter", "tag"], "@jsxStartTag"],
     ],
 
     jsxStartTag: [
       [/\s+/, ""],
-      // Special attributes
-      [/\{ref\b/, { token: "keyword", next: "@jsxAttributeExpression" }],
-      [/\{html\b/, { token: "keyword", next: "@jsxAttributeExpression" }],
+      // Special ref attribute
+      [
+        /(\{)(ref)\b/,
+        ["delimiter.bracket", "keyword"],
+        "@jsxAttributeExpression",
+      ],
+      // Special html attribute
+      [
+        /(\{)(html)\b/,
+        ["delimiter.bracket", "keyword"],
+        "@jsxAttributeExpression",
+      ],
+      // Spread attributes {...props}
+      [/\{\.\.\./, "delimiter.bracket", "@jsxAttributeExpression"],
+      // Shorthand attributes {onClick}
+      [/\{/, "delimiter.bracket", "@jsxAttributeExpression"],
       // Expression attribute value
       [
-        /(\w+)(\s*)(=)(\s*)(\{)/,
-        [
-          "attribute.name",
-          "",
-          "delimiter",
-          "",
-          { token: "delimiter.bracket", next: "@jsxAttributeExpression" },
-        ],
+        /([a-zA-Z_$][\w$-]*)(\s*)(=)(\s*)(\{)/,
+        ["attribute.name", "", "delimiter", "", "delimiter.bracket"],
+        "@jsxAttributeExpression",
       ],
-      // Simple attribute with string value
+      // Simple attribute with double-quoted string value
       [
-        /(\w+)(\s*)(=)(\s*)("[^"]*"|'[^']*')/,
+        /([a-zA-Z_$][\w$-]*)(\s*)(=)(\s*)(")/,
         ["attribute.name", "", "delimiter", "", "string"],
+        "@jsxAttrStringDouble",
+      ],
+      // Simple attribute with single-quoted string value
+      [
+        /([a-zA-Z_$][\w$-]*)(\s*)(=)(\s*)(')/,
+        ["attribute.name", "", "delimiter", "", "string"],
+        "@jsxAttrStringSingle",
       ],
       // Boolean attribute
-      [/[a-zA-Z_$][\w$]*/, "attribute.name"],
-      // Self-closing tag
-      [/\/>/, { token: "tag", next: "@pop" }],
-      // End of opening tag
-      [/>/, { token: "tag", next: "@pop" }],
+      [/[a-zA-Z_$][\w$-]*/, "attribute.name"],
+      // Self-closing tag />
+      [/\/>/, "delimiter", "@pop"],
+      // End of opening tag >
+      [/>/, "delimiter", "@pop"],
+    ],
+
+    jsxAttrStringDouble: [
+      [/[^"]+/, "string"],
+      [/"/, "string", "@pop"],
+    ],
+
+    jsxAttrStringSingle: [
+      [/[^']+/, "string"],
+      [/'/, "string", "@pop"],
     ],
 
     jsxAttributeExpression: [
-      [/\{/, { token: "delimiter.bracket", next: "@jsxAttributeExpression" }],
-      [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+      [/\{/, "delimiter.bracket", "@jsxAttributeExpressionNested"],
+      [/\}/, "delimiter.bracket", "@pop"],
+      { include: "@whitespaceAndComments" },
+      { include: "@jsxExpressionContent" },
+    ],
+
+    jsxAttributeExpressionNested: [
+      [/\{/, "delimiter.bracket", "@jsxAttributeExpressionNested"],
+      [/\}/, "delimiter.bracket", "@pop"],
       { include: "@whitespaceAndComments" },
       { include: "@jsxExpressionContent" },
     ],
@@ -313,11 +350,10 @@ export const tokens: languages.IMonarchLanguage = {
         },
       ],
 
-      // Brackets (not braces - those are handled by the parent state)
-      [/[(\[\]]/, "@brackets"],
-      [/\)/, "@brackets"],
+      // Brackets
+      [/[(\[\])]/, "@brackets"],
 
-      // Operators - but NOT > or < alone as they could be confused
+      // Operators
       [/<=|>=|===|!==|==|!=|&&|\|\||\?\?/, "operator"],
       [/\+\+|--|\*\*/, "operator"],
       [/<<|>>>|>>/, "operator"],
@@ -336,10 +372,7 @@ export const tokens: languages.IMonarchLanguage = {
     ],
 
     string_backtick_in_jsx: [
-      [
-        /\$\{/,
-        { token: "delimiter.bracket", next: "@templateExpressionInJsx" },
-      ],
+      [/\$\{/, "delimiter.bracket", "@templateExpressionInJsx"],
       [/[^\\`$]+/, "string"],
       [/@escapes/, "string.escape"],
       [/\\./, "string.escape.invalid"],
@@ -347,8 +380,8 @@ export const tokens: languages.IMonarchLanguage = {
     ],
 
     templateExpressionInJsx: [
-      [/\{/, { token: "delimiter.bracket", next: "@templateExpressionInJsx" }],
-      [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+      [/\{/, "delimiter.bracket", "@templateExpressionInJsx"],
+      [/\}/, "delimiter.bracket", "@pop"],
       { include: "@whitespaceAndComments" },
       { include: "@jsxExpressionContent" },
     ],
@@ -356,7 +389,7 @@ export const tokens: languages.IMonarchLanguage = {
     styleBlock: [
       [/<\/style>/, { token: "tag", next: "@pop", nextEmbedded: "@pop" }],
       [/[^<]+/, ""],
-      [/./, ""],
+      [/</, ""],
     ],
 
     comment: [
@@ -380,7 +413,7 @@ export const tokens: languages.IMonarchLanguage = {
     ],
 
     string_backtick: [
-      [/\$\{/, { token: "delimiter.bracket", next: "@templateExpression" }],
+      [/\$\{/, "delimiter.bracket", "@templateExpression"],
       [/[^\\`$]+/, "string"],
       [/@escapes/, "string.escape"],
       [/\\./, "string.escape.invalid"],
@@ -388,8 +421,8 @@ export const tokens: languages.IMonarchLanguage = {
     ],
 
     templateExpression: [
-      [/\{/, { token: "delimiter.bracket", next: "@templateExpression" }],
-      [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+      [/\{/, "delimiter.bracket", "@templateExpression"],
+      [/\}/, "delimiter.bracket", "@pop"],
       { include: "@whitespaceAndComments" },
       { include: "@expressions" },
     ],
