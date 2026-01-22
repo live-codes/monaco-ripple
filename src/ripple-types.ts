@@ -1,197 +1,359 @@
 // ripple-types.ts
 
-export const rippleTypeDefinitions = `
-// Core tracked value type
-interface TrackedValue<T> {
-  readonly value: T;
+// https://unpkg.com/ripple/types/index.d.ts
+const rippleTypes = `
+export type Component<T = Record<string, any>> = (props: T) => void;
+
+export type CompatApi = {
+	createRoot: () => void;
+	createComponent: (node: any, children_fn: () => any) => void;
+	jsx: (type: any, props: any) => any;
+};
+
+export type CompatOptions = {
+	[key: string]: CompatApi;
+};
+
+export function mount(
+	component: () => void,
+	options: { target: HTMLElement; props?: Record<string, any>; compat?: CompatOptions },
+): () => void;
+
+export function tick(): Promise<void>;
+
+export function untrack<T>(fn: () => T): T;
+
+export function flushSync<T>(fn?: () => T): T;
+
+export function effect(fn: (() => void) | (() => () => void)): void;
+
+export interface TrackedArrayConstructor {
+	new <T>(...elements: T[]): TrackedArray<T>; // must be used with \`new\`
+	from<T>(arrayLike: ArrayLike<T>): TrackedArray<T>;
+	of<T>(...items: T[]): TrackedArray<T>;
+	fromAsync<T>(iterable: AsyncIterable<T>): Promise<TrackedArray<T>>;
 }
 
-// Helper function that wraps values in tracking
-declare function __rippleTrack__<T>(value: T): TrackedValue<T>;
-declare function __rippleTrack__<T>(fn: () => T): TrackedValue<T>;
+export interface TrackedArray<T> extends Array<T> {}
 
-// Tracked collections
-declare class TrackedArray<T> extends Array<T> {
-  constructor(items?: T[]);
+export const TrackedArray: TrackedArrayConstructor;
 
-  // All mutating methods trigger reactivity
-  push(...items: T[]): number;
-  pop(): T | undefined;
-  shift(): T | undefined;
-  unshift(...items: T[]): number;
-  splice(start: number, deleteCount?: number, ...items: T[]): T[];
-  sort(compareFn?: (a: T, b: T) => number): this;
-  reverse(): this;
-  fill(value: T, start?: number, end?: number): this;
-  copyWithin(target: number, start: number, end?: number): this;
+export class Context<T> {
+	constructor(initial_value: T);
+	get(): T;
+	set(value: T): void;
+	#private;
 }
 
-declare class TrackedObject<T extends object> {
-  constructor(obj: T);
-
-  // Proxy-based, all property access/mutation is tracked
-  [K in keyof T]: T[K];
+export class TrackedSet<T> extends Set<T> {
+	isDisjointFrom<U>(other: ReadonlySetLike<U> | TrackedSet<U>): boolean;
+	isSubsetOf<U>(other: ReadonlySetLike<U> | TrackedSet<U>): boolean;
+	isSupersetOf<U>(other: ReadonlySetLike<U> | TrackedSet<U>): boolean;
+	difference<U>(other: ReadonlySetLike<U> | TrackedSet<U>): TrackedSet<T>;
+	intersection<U>(other: ReadonlySetLike<U> | TrackedSet<U>): TrackedSet<T & U>;
+	symmetricDifference<U>(other: ReadonlySetLike<U> | TrackedSet<U>): TrackedSet<T | U>;
+	union<U>(other: ReadonlySetLike<U> | TrackedSet<U>): TrackedSet<T | U>;
+	toJSON(): T[];
+	#private;
 }
 
-declare class TrackedSet<T> extends Set<T> {
-  constructor(items?: Iterable<T>);
+export class TrackedMap<K, V> extends Map<K, V> {
+	toJSON(): [K, V][];
+	#private;
 }
 
-declare class TrackedMap<K, V> extends Map<K, V> {
-  constructor(entries?: Iterable<readonly [K, V]>);
+// Compiler-injected runtime symbols (for Ripple component development)
+declare global {
+	/**
+	 * Runtime block context injected by the Ripple compiler.
+	 * This is automatically available in component scopes and passed to runtime functions.
+	 */
+	var __block: any;
+
+	/**
+	 * Ripple runtime namespace - injected by the compiler
+	 * These functions are available in compiled Ripple components for TypeScript analysis
+	 */
+	var _$_: {
+		tracked<T>(value: T, block?: any): T;
+		computed<T>(fn: () => T, block?: any): T;
+		scope(): any;
+		get_tracked(node: any): any;
+		get_derived(node: any): any;
+		set(node: any, value: any): any;
+		// Add other runtime functions as needed for TypeScript analysis
+	};
 }
 
-declare class TrackedDate extends Date {
-  constructor(...args: ConstructorParameters<typeof Date>);
+export function createRefKey(): symbol;
 
-  // All setters trigger reactivity
-  setTime(time: number): number;
-  setMilliseconds(ms: number): number;
-  setSeconds(sec: number, ms?: number): number;
-  setMinutes(min: number, sec?: number, ms?: number): number;
-  setHours(hour: number, min?: number, sec?: number, ms?: number): number;
-  setDate(date: number): number;
-  setMonth(month: number, date?: number): number;
-  setFullYear(year: number, month?: number, date?: number): number;
+// Base Tracked interface - all tracked values have a '#v' property containing the actual value
+export interface Tracked<V> {
+	'#v': V;
 }
 
-// Core reactivity functions
-declare module 'ripple' {
-  export function track<T>(value: T): TrackedValue<T>;
-  export function track<T>(fn: () => T): TrackedValue<T>;
-
-  export function untrack<T>(fn: () => T): T;
-
-  export function effect(fn: () => void | (() => void)): () => void;
-
-  export function computed<T>(fn: () => T): TrackedValue<T>;
-
-  export function batch(fn: () => void): void;
-
-  export function flushSync(fn: () => void): void;
-
-  export function tick(): Promise<void>;
+// Augment Tracked to be callable when V is a Component
+// This allows <@Something /> to work in JSX when Something is Tracked<Component>
+export interface Tracked<V> {
+	(props: V extends Component<infer P> ? P : never): V extends Component ? void : never;
 }
 
-// Lifecycle and events
-declare module 'ripple' {
-  export function onMount(fn: () => void | (() => void)): void;
+// Helper type to infer component type from a function that returns a component
+// If T is a function returning a Component, extract the Component type itself, not the return type (void)
+export type InferComponent<T> = T extends () => infer R ? (R extends Component<any> ? R : T) : T;
 
-  export function onDestroy(fn: () => void): void;
+export type Props<K extends PropertyKey = any, V = unknown> = Record<K, V>;
+export type PropsWithExtras<T extends object> = Props & T & Record<string, unknown>;
+export type PropsWithChildren<T extends object = {}> = Expand<
+	Omit<Props, 'children'> & { children: Component } & T
+>;
 
-  export function on<K extends keyof WindowEventMap>(
-    target: Window,
-    event: K,
-    handler: (e: WindowEventMap[K]) => void,
-    options?: AddEventListenerOptions
-  ): void;
+type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
-  export function on<K extends keyof DocumentEventMap>(
-    target: Document,
-    event: K,
-    handler: (e: DocumentEventMap[K]) => void,
-    options?: AddEventListenerOptions
-  ): void;
+type PickKeys<T, K extends readonly (keyof T)[]> = { [I in keyof K]: Tracked<T[K[I] & keyof T]> };
 
-  export function on<K extends keyof HTMLElementEventMap>(
-    target: HTMLElement,
-    event: K,
-    handler: (e: HTMLElementEventMap[K]) => void,
-    options?: AddEventListenerOptions
-  ): void;
+type RestKeys<T, K extends readonly (keyof T)[]> = Expand<Omit<T, K[number]>>;
 
-  export function on<T extends EventTarget>(
-    target: T,
-    event: string,
-    handler: (e: Event) => void,
-    options?: AddEventListenerOptions
-  ): void;
+type SplitResult<T extends Props, K extends readonly (keyof T)[]> = [
+	...PickKeys<T, K>,
+	Tracked<RestKeys<T, K>>,
+];
+
+export function get<V>(tracked: Tracked<V>): V;
+
+export function set<V>(tracked: Tracked<V>, value: V): void;
+
+// Overload for function values - infers the return type of the function
+export function track<V>(
+	value: () => V,
+	get?: (v: InferComponent<V>) => InferComponent<V>,
+	set?: (next: InferComponent<V>, prev: InferComponent<V>) => InferComponent<V>,
+): Tracked<InferComponent<V>>;
+// Overload for non-function values
+export function track<V>(value?: V, get?: (v: V) => V, set?: (next: V, prev: V) => V): Tracked<V>;
+
+export function trackSplit<V extends Props, const K extends readonly (keyof V)[]>(
+	value: V,
+	splitKeys: K,
+): SplitResult<V, K>;
+
+export interface AddEventOptions extends ExtendedEventOptions {
+	customName?: string;
 }
 
-// Component types
-declare module 'ripple' {
-  export type Component<P = {}> = (props: P) => void;
+export interface AddEventObject extends AddEventOptions, EventListenerObject {}
 
-  export type PropsWithChildren<P = {}> = P & {
-    children?: RippleNode;
-  };
-
-  export type RippleNode =
-    | string
-    | number
-    | boolean
-    | null
-    | undefined
-    | Element
-    | RippleNode[];
-
-  export function mount(
-    component: Component | (() => void),
-    target: Element | string
-  ): () => void;
-
-  export function hydrate(
-    component: Component | (() => void),
-    target: Element | string
-  ): () => void;
+export interface ExtendedEventOptions extends AddEventListenerOptions, EventListenerOptions {
+	delegated?: boolean;
 }
 
-// Context API
-declare module 'ripple' {
-  export class Context<T> {
-    constructor(defaultValue: T);
-    provide(value: T): void;
-    consume(): T;
-  }
+export function on<Type extends keyof WindowEventMap>(
+	window: Window,
+	type: Type,
+	handler: (this: Window, event: WindowEventMap[Type]) => any,
+	options?: ExtendedEventOptions | undefined,
+): () => void;
 
-  export function createContext<T>(defaultValue: T): Context<T>;
+export function on<Type extends keyof DocumentEventMap>(
+	document: Document,
+	type: Type,
+	handler: (this: Document, event: DocumentEventMap[Type]) => any,
+	options?: ExtendedEventOptions | undefined,
+): () => void;
+
+export function on<Element extends HTMLElement, Type extends keyof HTMLElementEventMap>(
+	element: Element,
+	type: Type,
+	handler: (this: Element, event: HTMLElementEventMap[Type]) => any,
+	options?: ExtendedEventOptions | undefined,
+): () => void;
+
+export function on<Element extends MediaQueryList, Type extends keyof MediaQueryListEventMap>(
+	element: Element,
+	type: Type,
+	handler: (this: Element, event: MediaQueryListEventMap[Type]) => any,
+	options?: ExtendedEventOptions | undefined,
+): () => void;
+
+export function on(
+	element: EventTarget,
+	type: string,
+	handler: EventListener,
+	options?: ExtendedEventOptions | undefined,
+): () => void;
+
+export type TrackedObjectShallow<T> = {
+	[K in keyof T]: T[K] | Tracked<T[K]>;
+};
+
+export type TrackedObjectDeep<T> = T extends
+	| string
+	| number
+	| boolean
+	| null
+	| undefined
+	| symbol
+	| bigint
+	? T | Tracked<T>
+	: T extends TrackedArray<infer U>
+		? TrackedArray<U> | Tracked<TrackedArray<U>>
+		: T extends TrackedSet<infer U>
+			? TrackedSet<U> | Tracked<TrackedSet<U>>
+			: T extends TrackedMap<infer K, infer V>
+				? TrackedMap<K, V> | Tracked<TrackedMap<K, V>>
+				: T extends Array<infer U>
+					? Array<TrackedObjectDeep<U>> | Tracked<Array<TrackedObjectDeep<U>>>
+					: T extends Set<infer U>
+						? Set<TrackedObjectDeep<U>> | Tracked<Set<TrackedObjectDeep<U>>>
+						: T extends Map<infer K, infer V>
+							?
+									| Map<TrackedObjectDeep<K>, TrackedObjectDeep<V>>
+									| Tracked<Map<TrackedObjectDeep<K>, TrackedObjectDeep<V>>>
+							: T extends object
+								? { [K in keyof T]: TrackedObjectDeep<T[K]> | Tracked<TrackedObjectDeep<T[K]>> }
+								: T | Tracked<T>;
+
+export type TrackedObject<T extends object = object> = T & { readonly __brand: unique symbol };
+
+export interface TrackedObjectConstructor {
+	new <T extends Object>(obj: T): TrackedObject<T>;
 }
 
-// Portal
-declare module 'ripple' {
-  export function portal(target: Element | string, content: () => void): void;
+export const TrackedObject: TrackedObjectConstructor;
 
-  export class Portal {
-    constructor(props: { target: Element | string; children?: any });
-  }
+export class TrackedDate extends Date {
+	constructor(...params: any[]);
+	#private;
 }
 
-// Transitions
-declare module 'ripple' {
-  export interface TransitionConfig {
-    delay?: number;
-    duration?: number;
-    easing?: (t: number) => number;
-    css?: (t: number, u: number) => string;
-    tick?: (t: number, u: number) => void;
-  }
+declare const REPLACE: unique symbol;
 
-  export function fade(node: Element, params?: { delay?: number; duration?: number }): TransitionConfig;
-  export function fly(node: Element, params?: { delay?: number; duration?: number; x?: number; y?: number; opacity?: number }): TransitionConfig;
-  export function slide(node: Element, params?: { delay?: number; duration?: number }): TransitionConfig;
-  export function scale(node: Element, params?: { delay?: number; duration?: number; start?: number; opacity?: number }): TransitionConfig;
-  export function draw(node: SVGPathElement, params?: { delay?: number; duration?: number; speed?: number }): TransitionConfig;
+export class TrackedURLSearchParams extends URLSearchParams {
+	[REPLACE](params: URLSearchParams): void;
+	#private;
 }
 
-// Stores (if Ripple has them)
-declare module 'ripple/store' {
-  export interface Writable<T> {
-    subscribe(fn: (value: T) => void): () => void;
-    set(value: T): void;
-    update(fn: (value: T) => T): void;
-  }
-
-  export interface Readable<T> {
-    subscribe(fn: (value: T) => void): () => void;
-  }
-
-  export function writable<T>(initial: T): Writable<T>;
-  export function readable<T>(initial: T, start?: (set: (value: T) => void) => void | (() => void)): Readable<T>;
-  export function derived<T, S>(stores: Readable<S> | Readable<S>[], fn: (values: S | S[]) => T): Readable<T>;
-  export function get<T>(store: Readable<T>): T;
+export class TrackedURL extends URL {
+	get searchParams(): TrackedURLSearchParams;
+	#private;
 }
 
-// JSX types
+export function createSubscriber(start: () => void | (() => void)): () => void;
+
+interface ReactiveValue<V> extends Tracked<V> {
+	new (fn: () => Tracked<V>, start: () => void | (() => void)): Tracked<V>;
+	/** @private */
+	_brand: void;
+}
+
+export interface MediaQuery extends Tracked<boolean> {
+	new (query: string, fallback?: boolean | undefined): Tracked<boolean>;
+	/** @private */
+	_brand: void;
+}
+
+export const MediaQuery: {
+	new (query: string, fallback?: boolean | undefined): Tracked<boolean>;
+};
+
+export function Portal<V = HTMLElement>({
+	target,
+	children: Component,
+}: {
+	target: V;
+	children?: Component;
+}): void;
+
+export type GetFunction<V> = () => V;
+export type SetFunction<V> = (v: V) => void;
+
+export function bindValue<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLInputElement | HTMLSelectElement) => void;
+
+export function bindChecked<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLInputElement) => void;
+
+export function bindClientWidth<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindClientHeight<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindContentRect<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindContentBoxSize<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindBorderBoxSize<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindDevicePixelContentBoxSize<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindInnerHTML<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindInnerText<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindTextContent<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindNode<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindGroup<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLInputElement) => void;
+
+export function bindOffsetHeight<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindOffsetWidth<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLElement) => void;
+
+export function bindIndeterminate<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLInputElement) => void;
+
+export function bindFiles<V>(
+	tracked: Tracked<V> | GetFunction<V>,
+	setter?: SetFunction<V>,
+): (node: HTMLInputElement) => void;
+`;
+
+const jsxTypes = `
 declare namespace JSX {
   type Element = any;
 
@@ -591,3 +753,5 @@ declare namespace JSX {
   }
 }
 `;
+
+export const rippleTypeDefinitions = rippleTypes + jsxTypes;
